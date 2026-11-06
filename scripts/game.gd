@@ -47,6 +47,7 @@ var resume_grace := 0.0
 var browser_screen := ""
 var browser_report := ""
 var install_label := "INSTALL APP"
+var fullscreen_label := "FULLSCREEN"
 var sng_song := false
 var sng_parts: Array = []
 var sng_part := 0
@@ -68,9 +69,12 @@ func _process(delta: float) -> void:
 		var command = JavaScriptBridge.eval("window.fivefoldTakeCommand && window.fivefoldTakeCommand()")
 		if command == "back": handle_back()
 		elif command == "install_label": refresh_install_label()
+		elif command == "fullscreen_label": refresh_fullscreen_label()
 	if OS.has_feature("web") and browser_screen != screen:
 		browser_screen = screen
-		if screen == "settings": refresh_install_label()
+		if screen == "settings":
+			refresh_install_label()
+			refresh_fullscreen_label()
 		JavaScriptBridge.eval("window.fivefoldSetScreen(" + JSON.stringify(screen) + ")")
 	for lane in range(5):
 		flashes[lane] = maxf(0, flashes[lane] - delta * 3.5)
@@ -293,6 +297,21 @@ func refresh_install_label() -> void:
 	if OS.has_feature("web"):
 		var label = JavaScriptBridge.eval("window.fivefoldInstallLabel && window.fivefoldInstallLabel()")
 		if label is String: install_label = label
+
+func refresh_fullscreen_label() -> void:
+	if OS.has_feature("web"):
+		var label = JavaScriptBridge.eval("window.fivefoldFullscreenLabel && window.fivefoldFullscreenLabel()")
+		if label is String: fullscreen_label = label
+	else:
+		fullscreen_label = "EXIT FULLSCREEN" if DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN] else "FULLSCREEN"
+
+func toggle_fullscreen() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.fivefoldToggleFullscreen && window.fivefoldToggleFullscreen()")
+	else:
+		var is_fullscreen := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if is_fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN)
+		refresh_fullscreen_label()
 
 func install_app() -> void:
 	if OS.has_feature("web"):
@@ -636,6 +655,7 @@ func draw_settings() -> void:
 		text_at("GOOD         +/- 160 ms", Vector2(24, 556), 15, INK)
 		text_at("SNG: original timing. All notes play as taps/holds." if sng_song else "Hold notes until the tail reaches the line.", Vector2(24, 625), 13, MUTED)
 		text_at("D / F / SPACE / J / K or five touch lanes.", Vector2(24, 653), 13, MUTED)
-	button(Rect2(24, 704, 432, 44), install_label, install_app)
+	button(Rect2(24, 704, 207, 44), install_label, install_app)
+	button(Rect2(241, 704, 215, 44), fullscreen_label, toggle_fullscreen)
 	button(Rect2(24, 756, 432, 60), "SAVE & BACK", func(): save_settings(); screen = "menu", true)
 	center("FIVEFOLD  /  GODOT 4.7.2  /  WEB PROTOTYPE", 878, 10, MUTED)

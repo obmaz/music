@@ -2,11 +2,13 @@
 const commands = [];
 const canvas = document.getElementById('canvas');
 const installButton = document.getElementById('install-app');
+const fullscreenButton = document.getElementById('fullscreen-app');
 const installDialog = document.getElementById('install-dialog');
 const installTitle = document.getElementById('install-title');
 const installMessage = document.getElementById('install-message');
 let installPrompt = null;
 let installedInSession = false;
+let currentScreen = 'menu';
 
 export function placeOverlay(element, x, y, width, height) {
   const bounds = canvas.getBoundingClientRect();
@@ -17,16 +19,66 @@ export function placeOverlay(element, x, y, width, height) {
     width: (width * scale) + 'px', height: (height * scale) + 'px',
   });
 }
-const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+const fullscreenDisplay = matchMedia('(display-mode: fullscreen)');
+const standaloneDisplay = matchMedia('(display-mode: standalone)');
+// Remember the launch context: API fullscreen in a browser tab is not an install.
+const installedContext = standaloneDisplay.matches || navigator.standalone === true || (fullscreenDisplay.matches && !fullscreenElement());
+const standalone = () => installedContext;
+const isFullscreen = () => Boolean(fullscreenElement()) || fullscreenDisplay.matches;
 window.fivefoldInstallLabel = () => standalone() || installedInSession ? 'APP INSTALLED' : 'INSTALL APP';
+window.fivefoldFullscreenLabel = () => fullscreenElement() ? 'EXIT FULLSCREEN' : (fullscreenDisplay.matches ? 'FULLSCREEN ON' : 'FULLSCREEN');
 window.fivefoldTakeCommand = () => commands.shift() || '';
+function placeAppButtons() {
+  placeOverlay(installButton, 24, 704, 207, 44);
+  placeOverlay(fullscreenButton, 241, 704, 215, 44);
+}
+function syncFullscreenUI() {
+  fullscreenButton.setAttribute('aria-label', window.fivefoldFullscreenLabel());
+  fullscreenButton.setAttribute('aria-pressed', String(isFullscreen()));
+  canvas.dataset.fullscreen = String(isFullscreen());
+  commands.push('fullscreen_label');
+  placeAppButtons();
+}
 window.fivefoldAppScreen = screen => {
-  installButton.hidden = screen !== 'settings';
+  currentScreen = screen;
+  installButton.hidden = fullscreenButton.hidden = screen !== 'settings';
   installButton.setAttribute('aria-label', window.fivefoldInstallLabel());
-  placeOverlay(installButton, 24, 704, 432, 44);
+  syncFullscreenUI();
 };
-window.addEventListener('resize', () => placeOverlay(installButton, 24, 704, 432, 44));
-new ResizeObserver(() => placeOverlay(installButton, 24, 704, 432, 44)).observe(canvas);
+window.addEventListener('resize', placeAppButtons);
+new ResizeObserver(placeAppButtons).observe(canvas);
+let previousApiFullscreen = Boolean(fullscreenElement());
+function fullscreenChanged() {
+  const current = Boolean(fullscreenElement());
+  // Android Back/Escape may exit fullscreen without producing a history event.
+  if (previousApiFullscreen && !current && currentScreen === 'playing') commands.push('back');
+  previousApiFullscreen = current;
+  syncFullscreenUI();
+}
+document.addEventListener('fullscreenchange', fullscreenChanged);
+document.addEventListener('webkitfullscreenchange', fullscreenChanged);
+fullscreenDisplay.addEventListener('change', syncFullscreenUI);
+window.fivefoldToggleFullscreen = async () => {
+  try {
+    if (fullscreenElement()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) await exit.call(document);
+    } else if (fullscreenDisplay.matches) {
+      showInstallHelp('전체화면', '이미 전체화면으로 실행 중입니다.');
+    } else {
+      const root = document.documentElement;
+      if (root.requestFullscreen) await root.requestFullscreen({navigationUI:'hide'});
+      else if (root.webkitRequestFullscreen) await root.webkitRequestFullscreen();
+      else showInstallHelp('전체화면', '이 브라우저는 전체화면 전환을 지원하지 않습니다.\n홈 화면에 설치한 앱으로 열면 브라우저 주소창 없이 플레이할 수 있습니다.');
+    }
+  } catch {
+    showInstallHelp('전체화면', '브라우저에서 전체화면 전환을 허용하지 않았습니다.\n설치한 앱으로 열거나 지원되는 브라우저에서 다시 시도해 주세요.');
+  }
+  syncFullscreenUI();
+};
+// Fullscreen requires transient activation, so keep the call on a real DOM click.
+fullscreenButton.addEventListener('click', window.fivefoldToggleFullscreen);
 
 // Arm inside the first real interaction, so Chromium does not skip a history
 // entry created without user activation when the hardware/browser Back is used.

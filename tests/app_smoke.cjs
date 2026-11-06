@@ -53,6 +53,16 @@ const os=require('node:os');
   await gameClick(240,475);await waitScreen('menu');
   await gameClick(120,792);await waitScreen('settings');
   await page.locator('#install-app').waitFor({state:'visible'});
+  await page.locator('#fullscreen-app').waitFor({state:'visible'});
+  await page.locator('#fullscreen-app').click();
+  await page.waitForFunction(()=>document.fullscreenElement===document.documentElement);
+  await page.waitForFunction(()=>document.getElementById('fullscreen-app').getAttribute('aria-label')==='EXIT FULLSCREEN');
+  assert.equal(await page.evaluate(()=>window.fivefoldInstallLabel()),'INSTALL APP','Browser fullscreen is not mistaken for an installed app');
+  await page.screenshot({path:'test-results/fullscreen-settings.png'});
+  await page.locator('#fullscreen-app').click();
+  await page.waitForFunction(()=>!document.fullscreenElement);
+  await page.waitForFunction(()=>document.getElementById('fullscreen-app').getAttribute('aria-label')==='FULLSCREEN');
+
   await page.screenshot({path:'test-results/install-settings.png'});
   await page.locator('#install-app').click();
   await page.locator('#install-dialog[open]').waitFor();
@@ -77,7 +87,7 @@ const os=require('node:os');
   // Verify the actual manifest and scoped worker, then boot entirely offline.
   await page.waitForFunction(()=>document.getElementById('canvas').dataset.offlineReady==='true' && navigator.serviceWorker.controller,null,{timeout:60000});
   const manifest=await page.evaluate(async()=>await(await fetch('manifest.webmanifest')).json());
-  assert.equal(manifest.display,'standalone');assert.equal(manifest.scope,'./');
+  assert.equal(manifest.display,'fullscreen');assert.equal(manifest.scope,'./');
   assert(manifest.icons.some(i=>i.sizes==='192x192'));
   assert(manifest.icons.some(i=>i.sizes==='512x512'));
   assert((await page.evaluate(()=>caches.keys())).includes('other-project'),'Other apps caches survive');
@@ -119,7 +129,34 @@ const os=require('node:os');
   await page.locator('#install-dialog[open]').waitFor();
   assert((await page.locator('#install-message').textContent()).includes('공유 버튼'));
   await page.screenshot({path:'test-results/install-iphone-help.png'});
+  await page.locator('#install-close').click();
+  // API fullscreen loss (Android Back/Escape) also pauses active gameplay.
+  await page.locator('#fullscreen-app').click();
+  await page.waitForFunction(()=>document.fullscreenElement);
+  await gameClick(240,786);await waitScreen('menu');
+  await gameClick(240,635);await waitScreen('playing');
+  await page.waitForFunction(()=>window.fivefoldSngTime()>.2);
+  await page.evaluate(()=>document.exitFullscreen());
+  await waitScreen('paused');
+  const fullscreenClock=await page.evaluate(()=>window.fivefoldSngTime());
+  await page.waitForTimeout(200);
+  assert(Math.abs((await page.evaluate(()=>window.fivefoldSngTime()))-fullscreenClock)<.01,'Exiting fullscreen pauses audio');
+  await page.screenshot({path:'test-results/fullscreen-exit-pause.png'});
+
+  // Manifest fullscreen has no document.fullscreenElement: emulate that launch
+  // context to verify the installed/fullscreen labels independently of the API.
+  const installedPage=await context.newPage();
+  await installedPage.addInitScript(()=>{
+   const match=window.matchMedia.bind(window);
+   window.matchMedia=query=>{const result=match(query);if(query==='(display-mode: fullscreen)')Object.defineProperty(result,'matches',{value:true});return result};
+  });
+  await installedPage.goto(base);
+  await installedPage.locator('#loading').waitFor({state:'detached',timeout:60000});
+  assert.equal(await installedPage.evaluate(()=>document.fullscreenElement),null);
+  assert.equal(await installedPage.evaluate(()=>window.fivefoldInstallLabel()),'APP INSTALLED');
+  assert.equal(await installedPage.evaluate(()=>window.fivefoldFullscreenLabel()),'FULLSCREEN ON');
+  await installedPage.close();
   assert.deepEqual(errors,[]);
-  console.log('App checks passed: repeated Back, in-app dialogs, frozen/resumed audio, settings navigation, install button/prompt/help, installable manifest, scoped offline PWA boot and SNG playback.');
+  console.log('App checks passed: repeated Back, in-app dialogs, frozen/resumed audio, settings navigation, fullscreen enter/exit and pause, install button/prompt/help, fullscreen app manifest, scoped offline PWA boot and SNG playback.');
  }finally{await context.close();fs.rmSync(profile,{recursive:true,force:true})}
 })().catch(e=>{console.error(e);process.exit(1)});
