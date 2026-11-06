@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0d10">
-<meta name="description" content="Five lanes. One perfect moment. A mobile rhythm game built with Godot 4.7.2. Play an original synth-rock demo or load your own local audio.">
+<meta name="description" content="Five lanes. One perfect moment. A mobile rhythm game built with Godot 4.7.2. Play an original synth-rock demo or load a Chorus Encore SNG package with real charts and audio.">
 <title>FIVEFOLD — Five-lane rhythm</title>
 <style>
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0d10;color:#eef0e9;font-family:Arial,sans-serif}body{touch-action:none;overscroll-behavior:none}#canvas{display:block;width:100%!important;height:100%!important;max-width:100%;max-height:100%;margin:auto;outline:0;touch-action:none}#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0b0d10;z-index:2;padding:30px;text-align:center}h1{font-size:40px;letter-spacing:5px;margin:0 0 16px;color:#d3ff57}#loading p{font-size:14px;color:#81878b;line-height:1.6;max-width:340px}progress{width:240px;height:4px;accent-color:#d3ff57;margin:24px}#retry{color:#d3ff57;margin-top:20px}.sr-only{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+#import-status{position:fixed;z-index:4;inset:0;background:#0b0d10ee;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}#import-status[hidden]{display:none}#import-status strong{color:#d3ff57;letter-spacing:3px}#import-status p{color:#eef0e9;line-height:1.6}
 </style>
 <link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
@@ -16,35 +17,17 @@
 <body>
 <canvas id="canvas" tabindex="0" aria-label="FIVEFOLD rhythm game. Five lanes, D F Space J K keys, or touch. Escape pauses.">Use a browser with WebGL 2 and WebAssembly to play FIVEFOLD.</canvas>
 <div id="loading" role="status"><h1>FIVEFOLD</h1><p id="load-message">Five lanes. One perfect moment.<br>Loading your session…</p><progress id="progress"></progress><a href="" id="retry" hidden>Try again</a></div>
-<input id="track-picker" type="file" accept=".mp3,.ogg,.wav,audio/mpeg,audio/ogg,audio/wav" hidden>
-<button id="local-import" hidden aria-label="Import local audio track" style="position:fixed;z-index:1;opacity:0;cursor:pointer;border:0;padding:0" type="button">Import local track</button>
-<p class="sr-only">Play an original synth-rock track or select a local audio file. Local files stay in this browser and are never uploaded. Enter Sandman is not included; imported songs use generated practice patterns, not official charts.</p>
+<input id="track-picker" type="file" accept=".sng,.mp3,.ogg,.wav,audio/mpeg,audio/ogg,audio/wav" hidden>
+<button id="local-import" hidden aria-label="Import SNG song or local audio" style="position:fixed;z-index:1;opacity:0;cursor:pointer;border:0;padding:0" type="button">Import local track</button>
+<div id="import-status" hidden role="status"><strong>LOADING SESSION</strong><p id="import-message"></p></div>
+<p class="sr-only">Import a Chorus Encore SNG package to play its chart and audio, or use the original demo. Local files stay on this device and are never uploaded. Standalone audio files use generated practice patterns.</p>
+<script type="module" src="importer.mjs"></script>
 <script>
-let pendingTrack='';
-window.fivefoldTakeTrack=()=>{const value=pendingTrack;pendingTrack='';return value};
-window.fivefoldPickTrack=()=>{const picker=document.getElementById('track-picker');picker.value='';picker.click()};
-// A real DOM button preserves the browser's direct user gesture for file pickers,
-// including Safari, where a deferred game-loop input event can lose activation.
-window.fivefoldSetScreen=screen=>{document.getElementById('local-import').hidden=screen!=='menu';placeImportButton()};
-function placeImportButton(){const scale=Math.min(innerWidth/480,innerHeight/900);const button=document.getElementById('local-import');Object.assign(button.style,{left:((innerWidth-480*scale)/2+24*scale)+'px',top:((innerHeight-900*scale)/2+682*scale)+'px',width:(432*scale)+'px',height:(46*scale)+'px'})}
-document.getElementById('local-import').addEventListener('click',window.fivefoldPickTrack);
-addEventListener('resize',placeImportButton);
-document.getElementById('track-picker').addEventListener('change',async event=>{
- const file=event.target.files[0]; if(!file)return;
- const ext=file.name.split('.').pop().toLowerCase();
- if(!['mp3','ogg','wav'].includes(ext)){pendingTrack=JSON.stringify({error:'Use an MP3, OGG or WAV audio file.'});return}
- if(file.size>40*1024*1024){pendingTrack=JSON.stringify({error:'Track is too large. Maximum file size is 40 MB.'});return}
- try{
-  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file)});
-  pendingTrack=JSON.stringify({name:file.name,ext,data});
- }catch(error){pendingTrack=JSON.stringify({error:'Could not read this audio file. Please try another.'})}
-});
-// Keep keyboard play from scrolling the page, including on embedded browsers.
 window.addEventListener('keydown',event=>{if(['Space','ArrowUp','ArrowDown'].includes(event.code))event.preventDefault()});
 </script>
 <script src="index.js"></script>
 <script>
-const config={"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":1220580,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const config={"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":1223748,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const engine=new Engine(config);
 const overlay=document.getElementById('loading');
 const message=document.getElementById('load-message');

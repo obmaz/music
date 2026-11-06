@@ -42,11 +42,17 @@ var message := ""
 var message_time := 0.0
 var best := 0
 var notice := ""
-var paused_from := "playing"
-var settings_back := "menu"
 var song_duration := 0.0
 var resume_grace := 0.0
 var browser_screen := ""
+var browser_report := ""
+var sng_song := false
+var sng_parts: Array = []
+var sng_part := 0
+var sng_duration := 0.0
+var sng_artist := ""
+var sng_score_key := ""
+
 
 func _ready() -> void:
 	player = AudioStreamPlayer.new()
@@ -69,14 +75,24 @@ func _process(delta: float) -> void:
 			intro += delta
 			clock = intro
 			if intro >= 0:
-				player.play()
+				if sng_song: sng_audio("start")
+				else: player.play()
 		else:
-			clock = maxf(0, player.get_playback_position() + AudioServer.get_time_since_last_mix() - AudioServer.get_output_latency())
+			if sng_song:
+				clock = float(JavaScriptBridge.eval("window.fivefoldSngTime()"))
+			else:
+				clock = maxf(0, player.get_playback_position() + AudioServer.get_time_since_last_mix() - AudioServer.get_output_latency())
 		judge_notes(song_time())
+		if sng_song and intro >= 0 and clock >= song_duration: _finish()
 	if OS.has_feature("web") and screen in ["menu", "settings"]:
 		var payload = JavaScriptBridge.eval("window.fivefoldTakeTrack && window.fivefoldTakeTrack()")
 		if payload is String and not payload.is_empty():
 			import_track(payload)
+	if OS.has_feature("web"):
+		var report := JSON.stringify({"mode": "sng" if sng_song else ("practice" if local_track else "demo"), "title": title, "difficulty": difficulty, "part": sng_parts[sng_part].id if sng_song else "guitar", "score": score, "combo": combo, "noteCount": notes.size(), "judged": judged})
+		if browser_report != report:
+			browser_report = report
+			JavaScriptBridge.eval("window.fivefoldReport && window.fivefoldReport(" + report + ")")
 	queue_redraw()
 
 func song_time() -> float:
@@ -92,13 +108,46 @@ func judge_notes(now: float) -> void:
 			elif not down[note.lane] and resume_grace <= 0:
 				resolve(note, 0.0)
 
+func duration() -> float:
+	return sng_duration if sng_song else stream.get_length()
+
+func difficulty_labels() -> Array:
+	return ["EASY", "MEDIUM", "HARD", "EXPERT"] if sng_song else ["EASY", "NORMAL", "HARD"]
+
+func difficulty_available(choice: int) -> bool:
+	return not sng_song or sng_parts[sng_part].charts.has(str(choice))
+
+func select_part() -> void:
+	sng_part = (sng_part + 1) % sng_parts.size()
+	if not difficulty_available(difficulty):
+		for choice in range(3, -1, -1):
+			if difficulty_available(choice):
+				difficulty = choice
+				break
+	load_best()
+
+func sng_audio(action: String) -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.fivefoldSngAudio && window.fivefoldSngAudio(" + JSON.stringify(action) + ")")
+
+func score_key() -> String:
+	return sng_score_key + "/" + str(sng_part) if sng_song else title
+
 func start() -> void:
 	player.stop()
-	notes = Chart.generate(bpm, stream.get_length(), difficulty, first_beat)
+	sng_audio("stop")
+	if sng_song:
+		notes = sng_parts[sng_part].charts[str(difficulty)].duplicate(true)
+		first_beat = float(notes[0].time)
+		for note in notes:
+			note.state = 0
+			note.value = 0.0
+	else:
+		notes = Chart.generate(bpm, stream.get_length(), difficulty, first_beat)
 	if notes.is_empty():
 		notice = "Track is too short. Change FIRST NOTE in settings."
 		return
-	song_duration = stream.get_length()
+	song_duration = duration()
 	player.stream = stream
 	score = 0
 	combo = 0
@@ -223,6 +272,7 @@ func _notification(what: int) -> void:
 		pause_game()
 
 func pause_game() -> void:
+	if sng_song and intro >= 0: sng_audio("pause")
 	player.stream_paused = true
 	clear_input()
 	screen = "paused"
@@ -231,6 +281,7 @@ func resume_game() -> void:
 	# Allow a moment to re-grab held lanes without changing the chart or score.
 	resume_grace = 0.5
 	player.stream_paused = false
+	if sng_song and intro >= 0: sng_audio("resume")
 	screen = "playing"
 
 func _finish() -> void:
@@ -243,10 +294,11 @@ func _finish() -> void:
 		best = score
 		var cfg := ConfigFile.new()
 		cfg.load("user://scores.cfg")
-		cfg.set_value(title, str(difficulty), best)
+		cfg.set_value(score_key(), str(difficulty), best)
 		cfg.save("user://scores.cfg")
 
 func go_menu() -> void:
+	sng_audio("stop")
 	player.stop()
 	player.stream_paused = false
 	clear_input()
@@ -256,7 +308,7 @@ func go_menu() -> void:
 func load_best() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load("user://scores.cfg")
-	best = int(cfg.get_value(title, str(difficulty), 0))
+	best = int(cfg.get_value(score_key(), str(difficulty), 0))
 
 func load_settings() -> void:
 	var cfg := ConfigFile.new()
@@ -278,6 +330,9 @@ func import_track(payload: String) -> void:
 	if file.has("error"):
 		notice = file.error
 		return
+	if file.get("type", "") == "sng":
+		import_sng(file)
+		return
 	var bytes := Marshalls.base64_to_raw(file.data)
 	var imported: AudioStream
 	match file.ext:
@@ -290,12 +345,43 @@ func import_track(payload: String) -> void:
 	if imported == null or imported.get_length() < 8:
 		notice = "Could not read audio. Use MP3, OGG or PCM WAV (8s+)."
 		return
+	sng_audio("unload")
+	sng_song = false
+	sng_parts = []
+	difficulty = mini(difficulty, 2)
 	stream = imported
 	title = str(file.name).get_basename()
 	local_track = true
 	bpm = 123.0
 	first_beat = 4.0
 	notice = "Local audio loaded. Set BPM / first note in settings."
+	load_best()
+
+func import_sng(file: Dictionary) -> void:
+	var parts: Array = file.get("parts", [])
+	if parts.is_empty() or float(file.get("duration", 0)) <= 0:
+		notice = "SNG has no playable chart or audio."
+		return
+	sng_song = true
+	sng_parts = parts
+	sng_part = 0
+	sng_duration = float(file.duration)
+	sng_artist = str(file.get("artist", "UNKNOWN ARTIST"))
+	sng_score_key = "sng/" + JSON.stringify(parts).sha256_text()
+	title = str(file.name)
+	bpm = float(file.bpm)
+	local_track = true
+	# Select a difficulty that actually exists, without generating replacement notes.
+	if not difficulty_available(difficulty):
+		for choice in range(3, -1, -1):
+			if difficulty_available(choice):
+				difficulty = choice
+				break
+	var first_notes: Array = sng_parts[0].charts[str(difficulty)]
+	first_beat = float(first_notes[0].time)
+	notice = "SNG loaded / %s / %d audio track(s)" % [str(file.get("format", "")).to_upper(), int(file.get("stem_count", 1))]
+	if int(file.get("open_notes", 0)) > 0:
+		notice = "SNG loaded. Open notes use the center lane."
 	load_best()
 
 func pick_track() -> void:
@@ -305,6 +391,10 @@ func pick_track() -> void:
 		notice = "Local audio import is available in the web version."
 
 func use_demo() -> void:
+	sng_audio("unload")
+	sng_song = false
+	sng_parts = []
+	difficulty = mini(difficulty, 2)
 	stream = DEMO
 	title = "NIGHT CIRCUIT"
 	local_track = false
@@ -330,13 +420,13 @@ func box(rect: Rect2, fill: Color, radius: int = 12, stroke: Color = Color.TRANS
 		style.border_color = stroke
 	draw_style_box(style, rect)
 
-func button(rect: Rect2, label: String, action: Callable, primary: bool = false, selected: bool = false) -> void:
+func button(rect: Rect2, label: String, action: Callable, primary: bool = false, selected: bool = false, disabled: bool = false) -> void:
 	box(rect, LIME if primary else (Color("262d21") if selected else Color("171b20")), 10, LIME if selected else Color("2c3238"))
 	var font = BOLD
 	var size := 17 if primary else 13
 	var width: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	text_at(label, Vector2(rect.position.x + (rect.size.x - width) / 2, rect.position.y + rect.size.y / 2 + size * 0.35), size, BG if primary else (LIME if selected else INK), true)
-	areas.append({"rect": rect, "action": action})
+	text_at(label, Vector2(rect.position.x + (rect.size.x - width) / 2, rect.position.y + rect.size.y / 2 + size * 0.35), size, MUTED if disabled else (BG if primary else (LIME if selected else INK)), true)
+	if not disabled: areas.append({"rect": rect, "action": action})
 
 func brand() -> void:
 	for i in range(5):
@@ -370,15 +460,21 @@ func draw_menu() -> void:
 	text_at("01 / " + ("LOCAL SESSION" if local_track else "ORIGINAL SESSION"), Vector2(44, 259), 10, LIME, true)
 	text_at("YOUR" if local_track else "NIGHT", Vector2(42, 328), 40, INK, true)
 	text_at("SESSION" if local_track else "CIRCUIT", Vector2(42, 373), 40, INK, true)
-	text_at("FIVEFOLD STUDIO   /   SYNTH ROCK", Vector2(44, 431), 10, MUTED)
+	if sng_song:
+		text_at(sng_artist.left(36), Vector2(44, 396), 12, MUTED)
+		button(Rect2(42, 408, 300, 32), sng_parts[sng_part].label + "  /  CHANGE INSTRUMENT  >", select_part)
+	else:
+		text_at("LOCAL AUDIO / PRACTICE" if local_track else "FIVEFOLD STUDIO   /   SYNTH ROCK", Vector2(44, 431), 10, MUTED)
 	text_at(title.left(26), Vector2(26, 494), 20, INK, true)
-	text_at("%d BPM   /   %d:%02d   /   5 KEYS" % [int(bpm), int(stream.get_length()) / 60, int(stream.get_length()) % 60], Vector2(26, 521), 12, MUTED)
-	for d in range(3):
+	text_at("%d BPM   /   %d:%02d   /   5 KEYS" % [int(bpm), int(duration()) / 60, int(duration()) % 60], Vector2(26, 521), 12, MUTED)
+	var labels := difficulty_labels()
+	var step := 432.0 / labels.size()
+	for d in range(labels.size()):
 		var choice := d
-		button(Rect2(24 + d * 147, 543, 138, 42), ["EASY", "NORMAL", "HARD"][d], func(): difficulty = choice; load_best(), false, d == difficulty)
+		button(Rect2(24 + d * step, 543, step - 6, 42), labels[d], func(): difficulty = choice; load_best(), false, d == difficulty, not difficulty_available(d))
 	button(Rect2(24, 608, 432, 62), "PLAY SESSION     >", start, true)
-	button(Rect2(24, 682, 432, 46), "+  LOCAL TRACK  /  ENTER SANDMAN", pick_track)
-	text_at("Your audio stays on this device. Practice chart only.", Vector2(26, 750), 11, MUTED)
+	button(Rect2(24, 682, 432, 46), "+  IMPORT .SNG  /  LOCAL AUDIO", pick_track)
+	text_at("SNG: real chart + audio. Files stay on this device.", Vector2(26, 750), 11, MUTED)
 	button(Rect2(24, 771, 207, 42), "SETTINGS  /  %.1fx" % speed, func(): screen = "settings")
 	button(Rect2(241, 771, 215, 42), "DEMO TRACK" if local_track else "BEST  %07d" % best, use_demo if local_track else func(): pass)
 	text_at(notice.left(65) if not notice.is_empty() else "TAP NOTES  /  HOLD LONG NOTES  /  USE BOTH HANDS", Vector2(24, 839), 10, LIME if not notice.is_empty() else MUTED)
@@ -388,7 +484,7 @@ func draw_game() -> void:
 	text_at("FIVEFOLD", Vector2(24, 35), 17, LIME, true)
 	button(Rect2(392, 14, 64, 40), "II", pause_game)
 	text_at(title.left(29), Vector2(24, 79), 16, INK, true)
-	text_at(["EASY", "NORMAL", "HARD"][difficulty] + "  /  %.1fx" % speed, Vector2(24, 102), 11, MUTED)
+	text_at(difficulty_labels()[difficulty] + (" / " + sng_parts[sng_part].label if sng_song else "") + "  /  %.1fx" % speed, Vector2(24, 102), 11, MUTED)
 	text_at("SCORE", Vector2(24, 139), 10, MUTED)
 	text_at("%07d" % score, Vector2(22, 179), 38, INK, true)
 	text_at("ACCURACY", Vector2(326, 139), 10, MUTED)
@@ -489,7 +585,7 @@ func draw_settings() -> void:
 	setting_row(205, "NOTE SPEED", "%.1fx" % speed, func(): speed = maxf(0.6, snappedf(speed - 0.1, 0.1)), func(): speed = minf(2.0, snappedf(speed + 0.1, 0.1)))
 	setting_row(320, "TIMING OFFSET", "%+d ms" % int(offset_ms), func(): offset_ms = maxf(-500, offset_ms - 10), func(): offset_ms = minf(500, offset_ms + 10))
 	text_at("Positive = notes arrive later. Wired audio recommended.", Vector2(24, 420), 11, MUTED)
-	if local_track:
+	if local_track and not sng_song:
 		setting_row(467, "PRACTICE BPM", str(int(bpm)), func(): bpm = maxf(60, bpm - 1), func(): bpm = minf(240, bpm + 1))
 		setting_row(582, "FIRST NOTE / SECONDS INTO AUDIO", "%.1f s" % first_beat, func(): first_beat = maxf(0, first_beat - 0.1), func(): first_beat = minf(stream.get_length() - 3, first_beat + 0.1))
 		text_at("Generated practice pattern, not an original song chart.", Vector2(24, 696), 11, MUTED)
@@ -497,7 +593,7 @@ func draw_settings() -> void:
 		text_at("PERFECT   +/- 55 ms", Vector2(24, 488), 15, LIME)
 		text_at("GREAT       +/- 105 ms", Vector2(24, 522), 15, INK)
 		text_at("GOOD         +/- 160 ms", Vector2(24, 556), 15, INK)
-		text_at("Hold notes until the tail reaches the line.", Vector2(24, 625), 13, MUTED)
+		text_at("SNG: original timing. All notes play as taps/holds." if sng_song else "Hold notes until the tail reaches the line.", Vector2(24, 625), 13, MUTED)
 		text_at("D / F / SPACE / J / K or five touch lanes.", Vector2(24, 653), 13, MUTED)
 	button(Rect2(24, 756, 432, 60), "SAVE & BACK", func(): save_settings(); screen = "menu", true)
 	center("FIVEFOLD  /  GODOT 4.7.2  /  WEB PROTOTYPE", 878, 10, MUTED)
