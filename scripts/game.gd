@@ -4,6 +4,14 @@ const Chart = preload("res://scripts/chart.gd")
 const FONT = preload("res://assets/DejaVuSans.ttf")
 const BOLD = preload("res://assets/DejaVuSans-Bold.ttf")
 const DEMO = preload("res://assets/night-circuit.ogg")
+const HIT_SOUNDS = [
+	preload("res://assets/feedback/hit-0.wav"),
+	preload("res://assets/feedback/hit-1.wav"),
+	preload("res://assets/feedback/hit-2.wav"),
+	preload("res://assets/feedback/hit-3.wav"),
+	preload("res://assets/feedback/hit-4.wav")
+]
+const TAP_SOUND = preload("res://assets/feedback/tap.wav")
 const BG = Color("0b0d10")
 const INK = Color("eef0e9")
 const MUTED = Color("81878b")
@@ -26,6 +34,11 @@ var title := "NIGHT CIRCUIT"
 var local_track := false
 var stream: AudioStream = DEMO
 var player: AudioStreamPlayer
+var hit_players: Array[AudioStreamPlayer] = []
+var tap_player: AudioStreamPlayer
+var font_scale := Vector2.ONE
+var text_labels: Array[Label] = []
+var text_cursor := 0
 var notes: Array = []
 var areas: Array = []
 var fingers: Dictionary = {}
@@ -58,12 +71,48 @@ var sng_score_key := ""
 
 
 func _ready() -> void:
+	# Keep text in independent canvas items, so glyphs can retain their aspect
+	# ratio without changing any background geometry or touch coordinates.
+	for i in range(64):
+		var label := Label.new()
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.z_index = 1
+		label.visible = false
+		label.add_theme_constant_override("outline_size", 0)
+		label.add_theme_constant_override("line_spacing", 0)
+		add_child(label)
+		text_labels.append(label)
 	player = AudioStreamPlayer.new()
+	player.volume_db = -5.0
 	add_child(player)
 	player.finished.connect(_finish)
+	for sound in HIT_SOUNDS:
+		hit_players.append(make_feedback_player(sound))
+	tap_player = make_feedback_player(TAP_SOUND)
 	load_settings()
 	load_best()
 	queue_redraw()
+
+func make_feedback_player(sound: AudioStream) -> AudioStreamPlayer:
+	var feedback := AudioStreamPlayer.new()
+	feedback.stream = sound
+	feedback.volume_db = -12.0
+	feedback.max_polyphony = 8
+	if OS.has_feature("web"):
+		feedback.playback_type = AudioServer.PLAYBACK_TYPE_SAMPLE
+	add_child(feedback)
+	return feedback
+
+func play_feedback(lane: int, hit: bool) -> void:
+	if hit:
+		hit_players[lane].play()
+	else:
+		tap_player.play()
+
+func stop_feedback() -> void:
+	for feedback in hit_players:
+		feedback.stop()
+	if tap_player: tap_player.stop()
 
 func _process(delta: float) -> void:
 	if OS.has_feature("web"):
@@ -145,6 +194,7 @@ func score_key() -> String:
 	return sng_score_key + "/" + str(sng_part) if sng_song else title
 
 func start() -> void:
+	stop_feedback()
 	player.stop()
 	sng_audio("stop")
 	if sng_song:
@@ -213,6 +263,7 @@ func press_lane(lane: int) -> void:
 			if error < distance:
 				distance = error
 				candidate = note
+	play_feedback(lane, not candidate.is_empty())
 	if not candidate.is_empty():
 		var value: float = Chart.judgment(distance)
 		if candidate.hold > 0:
@@ -321,6 +372,7 @@ func install_app() -> void:
 		notice = "Open the web version to install FIVEFOLD."
 
 func pause_game() -> void:
+	stop_feedback()
 	if sng_song and intro >= 0: sng_audio("pause")
 	player.stream_paused = true
 	clear_input()
@@ -335,6 +387,7 @@ func resume_game() -> void:
 
 func _finish() -> void:
 	if screen != "playing": return
+	stop_feedback()
 	for note in notes:
 		if note.state != 2: resolve(note, 0.0)
 	clear_input()
@@ -347,6 +400,7 @@ func _finish() -> void:
 		cfg.save("user://scores.cfg")
 
 func go_menu() -> void:
+	stop_feedback()
 	sng_audio("stop")
 	player.stop()
 	player.stream_paused = false
@@ -452,13 +506,45 @@ func use_demo() -> void:
 	notice = ""
 	load_best()
 
+func update_font_scale() -> void:
+	# Geometry fills the viewport; inverse-scale glyphs so the final on-screen
+	# text has a uniform scale even when the phone has a different aspect ratio.
+	if OS.has_feature("web"):
+		var aspect = JavaScriptBridge.eval("window.fivefoldTextAspect || 1")
+		if aspect is float or aspect is int:
+			font_scale = Vector2(1.0 / maxf(float(aspect), 1.0), minf(float(aspect), 1.0))
+			return
+	var stretch := get_viewport().get_stretch_transform().get_scale().abs()
+	if stretch.x > 0 and stretch.y > 0:
+		font_scale = Vector2.ONE * minf(stretch.x, stretch.y) / stretch
+	else:
+		font_scale = Vector2.ONE
+
+func text_width(value: String, size: int, bold: bool = false) -> float:
+	var font = BOLD if bold else FONT
+	return font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x * font_scale.x
+
 func text_at(value: String, pos: Vector2, size: int = 16, color: Color = INK, bold: bool = false) -> void:
-	draw_string(BOLD if bold else FONT, pos, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	if text_cursor >= text_labels.size(): return
+	var label := text_labels[text_cursor]
+	text_cursor += 1
+	var font = BOLD if bold else FONT
+	if label.get_theme_font("font") != font: label.add_theme_font_override("font", font)
+	if label.get_theme_font_size("font_size") != size: label.add_theme_font_size_override("font_size", size)
+	if label.get_theme_color("font_color") != color: label.add_theme_color_override("font_color", color)
+	label.text = value
+	label.scale = font_scale
+	label.position = Vector2(pos.x, pos.y - font.get_ascent(size) * font_scale.y)
+	label.size = Vector2(font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x, font.get_height(size))
+	label.modulate = Color.WHITE
+	label.visible = true
+
+func dim_text(alpha: float) -> void:
+	for i in range(text_cursor):
+		text_labels[i].modulate = Color(1, 1, 1, alpha)
 
 func center(value: String, y: float, size: int = 16, color: Color = INK, bold: bool = false) -> void:
-	var font = BOLD if bold else FONT
-	var w: float = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	text_at(value, Vector2((480 - w) / 2, y), size, color, bold)
+	text_at(value, Vector2((480 - text_width(value, size, bold)) / 2, y), size, color, bold)
 
 func box(rect: Rect2, fill: Color, radius: int = 12, stroke: Color = Color.TRANSPARENT) -> void:
 	var style := StyleBoxFlat.new()
@@ -471,10 +557,9 @@ func box(rect: Rect2, fill: Color, radius: int = 12, stroke: Color = Color.TRANS
 
 func button(rect: Rect2, label: String, action: Callable, primary: bool = false, selected: bool = false, disabled: bool = false) -> void:
 	box(rect, LIME if primary else (Color("262d21") if selected else Color("171b20")), 10, LIME if selected else Color("2c3238"))
-	var font = BOLD
 	var size := 17 if primary else 13
-	var width: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	text_at(label, Vector2(rect.position.x + (rect.size.x - width) / 2, rect.position.y + rect.size.y / 2 + size * 0.35), size, MUTED if disabled else (BG if primary else (LIME if selected else INK)), true)
+	var width := text_width(label, size, true)
+	text_at(label, Vector2(rect.position.x + (rect.size.x - width) / 2, rect.position.y + rect.size.y / 2 + size * font_scale.y * 0.35), size, MUTED if disabled else (BG if primary else (LIME if selected else INK)), true)
 	if not disabled: areas.append({"rect": rect, "action": action})
 
 func brand() -> void:
@@ -485,6 +570,8 @@ func brand() -> void:
 	draw_line(Vector2(24, 56), Vector2(456, 56), Color("292e33"))
 
 func _draw() -> void:
+	update_font_scale()
+	text_cursor = 0
 	areas.clear()
 	draw_rect(Rect2(0, 0, 480, 900), BG)
 	match screen:
@@ -494,6 +581,8 @@ func _draw() -> void:
 		"back_prompt": draw_back_prompt()
 		"results": draw_results()
 		"settings": draw_settings()
+	for i in range(text_cursor, text_labels.size()):
+		text_labels[i].visible = false
 
 func draw_menu() -> void:
 	brand()
@@ -574,7 +663,7 @@ func draw_game() -> void:
 		var rect := Rect2(24 + lane * LANE_W, 770, LANE_W - 3, 80)
 		box(rect, COLORS[lane] if down[lane] else Color("22282d"), 9, Color(COLORS[lane], 0.45))
 		var label: String = LABELS[lane]
-		text_at(label, Vector2(rect.position.x + (rect.size.x - BOLD.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x) / 2, 817), 13, BG if down[lane] else COLORS[lane], true)
+		text_at(label, Vector2(rect.position.x + (rect.size.x - text_width(label, 13, true)) / 2, 817), 13, BG if down[lane] else COLORS[lane], true)
 		if flashes[lane] > 0:
 			draw_arc(Vector2(rect.get_center().x, HIT_Y), 15 + (1 - flashes[lane]) * 40, 0, TAU, 40, Color(COLORS[lane], flashes[lane]), 2, true)
 	if combo >= 2:
@@ -590,6 +679,7 @@ func draw_game() -> void:
 
 func draw_pause() -> void:
 	draw_game()
+	dim_text(0.12)
 	areas.clear()
 	draw_rect(Rect2(0, 0, 480, 900), Color(0.02, 0.025, 0.03, 0.88))
 	box(Rect2(24, 234, 432, 386), Color("171b20"), 18, Color("353e42"))
@@ -601,6 +691,7 @@ func draw_pause() -> void:
 
 func draw_back_prompt() -> void:
 	draw_menu()
+	dim_text(0.12)
 	areas.clear()
 	draw_rect(Rect2(0, 0, 480, 900), Color(0.02, 0.025, 0.03, 0.88))
 	box(Rect2(24, 286, 432, 270), Color("171b20"), 18, Color("353e42"))

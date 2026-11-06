@@ -2,7 +2,7 @@ import {placeOverlay} from './app.mjs';
 import {parsePackage} from './sng.mjs';
 
 let pending = '', active = null, loadId = 0, screen = 'menu';
-let context = null, source = null, startedAt = 0, position = 0, playing = false;
+let context = null, musicGain = null, source = null, startedAt = 0, position = 0, playing = false;
 const picker = document.getElementById('track-picker');
 const importButton = document.getElementById('local-import');
 const status = document.getElementById('import-status');
@@ -10,7 +10,12 @@ const statusText = document.getElementById('import-message');
 const canvas = document.getElementById('canvas');
 
 function getContext() {
-  if (!context) context = new (window.AudioContext || window.webkitAudioContext)({latencyHint:'interactive'});
+  if (!context) {
+    context = new (window.AudioContext || window.webkitAudioContext)({latencyHint:'interactive'});
+    musicGain = context.createGain();
+    musicGain.gain.value = .6; // Leave headroom for the five simultaneous key sounds.
+    musicGain.connect(context.destination);
+  }
   return context;
 }
 function stopSource() {
@@ -37,7 +42,7 @@ window.fivefoldSngAudio = action => {
     getContext().resume().catch(() => {});
     source = context.createBufferSource();
     source.buffer = active.buffer;
-    source.connect(context.destination);
+    source.connect(musicGain);
     startedAt = context.currentTime + .03 - position;
     source.onended = () => { position = active.duration; playing = false; source = null; };
     source.start(context.currentTime + .03, position);

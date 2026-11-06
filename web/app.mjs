@@ -31,6 +31,9 @@ window.fivefoldInstallLabel = () => standalone() || installedInSession ? 'APP IN
 window.fivefoldFullscreenLabel = () => fullscreenElement() ? 'EXIT FULLSCREEN' : (fullscreenDisplay.matches ? 'FULLSCREEN ON' : 'FULLSCREEN');
 window.fivefoldTakeCommand = () => commands.shift() || '';
 function placeAppButtons() {
+  const bounds = canvas.getBoundingClientRect();
+  // CSS may size the canvas differently from the engine render buffer.
+  window.fivefoldTextAspect = bounds.height > 0 ? (bounds.width / 480) / (bounds.height / 900) : 1;
   placeOverlay(installButton, 24, 704, 207, 44);
   placeOverlay(fullscreenButton, 241, 704, 215, 44);
 }
