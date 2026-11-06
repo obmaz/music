@@ -46,6 +46,7 @@ var song_duration := 0.0
 var resume_grace := 0.0
 var browser_screen := ""
 var browser_report := ""
+var install_label := "INSTALL APP"
 var sng_song := false
 var sng_parts: Array = []
 var sng_part := 0
@@ -63,8 +64,13 @@ func _ready() -> void:
 	queue_redraw()
 
 func _process(delta: float) -> void:
+	if OS.has_feature("web"):
+		var command = JavaScriptBridge.eval("window.fivefoldTakeCommand && window.fivefoldTakeCommand()")
+		if command == "back": handle_back()
+		elif command == "install_label": refresh_install_label()
 	if OS.has_feature("web") and browser_screen != screen:
 		browser_screen = screen
+		if screen == "settings": refresh_install_label()
 		JavaScriptBridge.eval("window.fivefoldSetScreen(" + JSON.stringify(screen) + ")")
 	for lane in range(5):
 		flashes[lane] = maxf(0, flashes[lane] - delta * 3.5)
@@ -228,9 +234,8 @@ func lane_at(pos: Vector2) -> int:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo:
-		if event.pressed and event.physical_keycode == KEY_ESCAPE:
-			if screen == "playing": pause_game()
-			elif screen == "paused": resume_game()
+		if event.pressed and event.physical_keycode in [KEY_ESCAPE, KEY_BACK]:
+			handle_back()
 			return
 		if screen == "playing":
 			var lane := KEYS.find(event.physical_keycode)
@@ -270,6 +275,30 @@ func _input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and screen == "playing":
 		pause_game()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		handle_back()
+
+func handle_back() -> void:
+	match screen:
+		"playing": pause_game()
+		"settings":
+			save_settings()
+			screen = "menu"
+		"results": go_menu()
+		"menu": screen = "back_prompt"
+		# Repeated Back must not dismiss the pause or resume audio unexpectedly.
+		"paused", "back_prompt": pass
+
+func refresh_install_label() -> void:
+	if OS.has_feature("web"):
+		var label = JavaScriptBridge.eval("window.fivefoldInstallLabel && window.fivefoldInstallLabel()")
+		if label is String: install_label = label
+
+func install_app() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.fivefoldInstall && window.fivefoldInstall()")
+	else:
+		notice = "Open the web version to install FIVEFOLD."
 
 func pause_game() -> void:
 	if sng_song and intro >= 0: sng_audio("pause")
@@ -442,6 +471,7 @@ func _draw() -> void:
 		"menu": draw_menu()
 		"playing": draw_game()
 		"paused": draw_pause()
+		"back_prompt": draw_back_prompt()
 		"results": draw_results()
 		"settings": draw_settings()
 
@@ -539,13 +569,24 @@ func draw_game() -> void:
 	center("HOLD THE LONG NOTES  /  ESC TO PAUSE", 881, 10, MUTED)
 
 func draw_pause() -> void:
-	brand()
-	center("TAKE A BREATH.", 260, 32, INK, true)
-	center("Your session is paused.", 300, 15, MUTED)
+	draw_game()
+	areas.clear()
+	draw_rect(Rect2(0, 0, 480, 900), Color(0.02, 0.025, 0.03, 0.88))
+	box(Rect2(24, 234, 432, 386), Color("171b20"), 18, Color("353e42"))
+	center("SESSION PAUSED", 290, 27, LIME, true)
+	center("Take a breath. Your place is saved.", 325, 13, MUTED)
 	button(Rect2(48, 370, 384, 62), "RESUME SESSION", resume_game, true)
 	button(Rect2(48, 450, 384, 50), "RESTART", func(): player.stream_paused = false; start())
 	button(Rect2(48, 518, 384, 50), "BACK TO TRACKS", go_menu)
-	center("Audio pauses when you leave this tab.", 652, 12, MUTED)
+
+func draw_back_prompt() -> void:
+	draw_menu()
+	areas.clear()
+	draw_rect(Rect2(0, 0, 480, 900), Color(0.02, 0.025, 0.03, 0.88))
+	box(Rect2(24, 286, 432, 270), Color("171b20"), 18, Color("353e42"))
+	center("STAY IN THE FLOW.", 350, 26, LIME, true)
+	center("Ready for your next session?", 389, 14, MUTED)
+	button(Rect2(48, 444, 384, 62), "CONTINUE", func(): screen = "menu", true)
 
 func draw_results() -> void:
 	brand()
@@ -595,5 +636,6 @@ func draw_settings() -> void:
 		text_at("GOOD         +/- 160 ms", Vector2(24, 556), 15, INK)
 		text_at("SNG: original timing. All notes play as taps/holds." if sng_song else "Hold notes until the tail reaches the line.", Vector2(24, 625), 13, MUTED)
 		text_at("D / F / SPACE / J / K or five touch lanes.", Vector2(24, 653), 13, MUTED)
+	button(Rect2(24, 704, 432, 44), install_label, install_app)
 	button(Rect2(24, 756, 432, 60), "SAVE & BACK", func(): save_settings(); screen = "menu", true)
 	center("FIVEFOLD  /  GODOT 4.7.2  /  WEB PROTOTYPE", 878, 10, MUTED)

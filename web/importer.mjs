@@ -1,3 +1,4 @@
+import {placeOverlay} from './app.mjs';
 import {parsePackage} from './sng.mjs';
 
 let pending = '', active = null, loadId = 0, screen = 'menu';
@@ -53,19 +54,19 @@ window.fivefoldTakeTrack = () => { const value = pending; pending = ''; return v
 window.fivefoldPickTrack = () => { picker.value = ''; picker.click(); };
 window.fivefoldSetScreen = value => {
   screen = value;
+  window.fivefoldAppScreen(value);
   canvas.dataset.screen = value;
   importButton.hidden = value !== 'menu';
   placeImportButton();
 };
 function placeImportButton() {
-  const scale = Math.min(innerWidth/480, innerHeight/900);
-  Object.assign(importButton.style, {
-    left:((innerWidth-480*scale)/2+24*scale)+'px', top:((innerHeight-900*scale)/2+682*scale)+'px',
-    width:(432*scale)+'px', height:(46*scale)+'px',
-  });
+  placeOverlay(importButton, 24, 682, 432, 46);
 }
+new ResizeObserver(placeImportButton).observe(canvas);
 importButton.addEventListener('click', window.fivefoldPickTrack);
 window.addEventListener('resize', placeImportButton);
+
+window.fivefoldCancelImport = () => { if (!status.hidden) { loadId++; status.hidden = true; } };
 
 function showProgress(message) { status.hidden = false; statusText.textContent = message; }
 const nextFrame = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -80,9 +81,11 @@ async function decodeSong(parsed, id) {
     const name = parsed.audioPaths[index];
     showProgress(`Decoding audio ${index+1}/${parsed.audioPaths.length}…`);
     await nextFrame();
+    if (id !== loadId) throw new Error('Import cancelled.');
     let decoded;
     try { decoded = await decoder.decodeAudioData(parsed.pkg.read(name).buffer); }
     catch { throw new Error(`Browser cannot decode ${name.split('/').at(-1)}. Try a current Chrome/Firefox or another SNG.`); }
+    if (id !== loadId) throw new Error('Import cancelled.');
     if (decoded.duration > 600) throw new Error('This song is longer than the 10-minute mobile limit.');
     if (!mix || mix.length < decoded.length) {
       const larger = decodeContext.createBuffer(2, decoded.length, 24000);

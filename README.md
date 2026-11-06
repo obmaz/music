@@ -19,6 +19,18 @@ Godot **4.7.2**로 만든 모바일 5버튼 리듬 게임 프로토타입입니�
 
 요청된 Metallica **Enter Sandman**의 음원·정식 채보는 포함하지 않았습니다. 공개 재배포가 허용된 자료를 확인하지 못했습니다. [공식 곡 페이지](https://www.metallica.com/songs/enter-sandman.html)의 권리 표기를 참고하세요.
 
+## 뒤로가기와 앱 설치
+
+- 플레이 중 Android/브라우저 뒤로가기 또는 Escape → **SESSION PAUSED** 팝업. 음악과 채보가 함께 멈춥니다.
+- 팝업에서 **RESUME SESSION**으로 재개하거나 **RESTART / BACK TO TRACKS**를 선택합니다. 반복해서 뒤로가기를 눌러도 게임이 자동 재개되거나 사이트 밖으로 이동하지 않습니다.
+- 설정에서 뒤로가기 → 설정 저장 후 게임 메뉴. 메뉴에서 뒤로가기 → 앱 안의 **CONTINUE** 팝업.
+- **SETTINGS → INSTALL APP**: Chrome/Android 등 설치 요청을 지원하는 환경에서는 브라우저 설치창을 엽니다. 설치창을 제공하지 않는 환경에서는 브라우저 메뉴로 설치하는 방법을 안내합니다.
+- iPhone/iPad는 공유 메뉴 → **홈 화면에 추가** → **추가** 안내를 제공합니다. 홈 화면에서 실행하면 **APP INSTALLED**로 표시됩니다.
+- 설치한 앱은 주소창 없는 독립 화면으로 실행됩니다. 최초 실행 후 캐싱이 완료되면 데모 게임과 로컬 SNG 불러오기를 오프라인으로도 사용할 수 있습니다. SNG 파일 자체는 보관하지 않으므로 다시 선택해야 합니다.
+- 서비스 워커는 현재 프로젝트 경로 범위만 캐시하며 다른 Pages 프로젝트의 캐시를 삭제하지 않습니다. 업데이트는 백그라운드에서 준비하고, 실행 중 게임을 새로고침하지 않습니다. 이후 다시 열 때 새 빌드를 사용합니다.
+
+설치는 HTTPS 또는 localhost에서 지원되며, 실제 설치창 노출은 브라우저와 OS의 설치 조건에 따릅니다. 브라우저의 강제 탭 닫기·주소 직접 이동은 앱 안의 뒤로가기와 별개입니다. 실제 휴대폰의 OS 설치 화면은 아직 검증하지 않았습니다. [PWA 설치 방식](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable), [브라우저 뒤로가기 이벤트](https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event).
+
 ## SNG 사용법
 
 1. [Chorus Encore](https://www.enchor.us/)에서 원하는 곡을 `.sng` 형식으로 받습니다.
@@ -84,11 +96,15 @@ godot --headless --path . --script tests/game_test.gd
 # build/web을 8765 포트에서 제공한 상태, Node + Playwright + Chromium 필요
 node tests/sng_smoke.cjs
 node tests/web_smoke.cjs
+# build/를 8767 포트에서 제공 (/web/ 하위 경로에서 설치·오프라인·뒤로가기 검증)
+node tests/app_smoke.cjs
 ```
 
 채보 정렬·롱노트 충돌, 판정 경계, 만점·콤보, 롱노트 조기 해제, 멀티터치 독립 해제, 일시정지 복원, 미입력 Miss 처리를 검증합니다. 브라우저 스모크 테스트는 `tests/web_smoke.cjs`에 있습니다 (Node + Playwright + Chromium, 로컬 서버 필요).
 
 SNG 테스트는 공식 SngCli v0.3.0으로 생성한 두 개의 오리지널 패키지를 사용합니다. `.chart + OGG`, `MIDI + Opus/OGG`의 컨테이너·실제 노트·BPM 변화·오프셋·롱노트·실제 난이도·악기 선택·점수·일시정지·완주·잘못된 파일 처리를 검증합니다. `tests/fixtures/README.md`를 참고하세요.
+
+앱 테스트는 반복 뒤로가기 시 경로·음악 정지, 메뉴/설정 팝업, 설치 버튼과 설치 이벤트, iPhone 안내 분기, 실제 Chromium 설치 가능 판정, 서비스 워커 범위와 타 프로젝트 캐시 보존, 네트워크 차단 후 재실행·SNG 플레이를 검증합니다. 네이티브 설치창은 테스트 이벤트로 시뮬레이션하며 실제 기기 설치 검증을 대신하지 않습니다.
 
 검증 완료: Godot 4.7.2 헤드리스 게임 테스트, Chromium 웹 실행·플레이·일시정지·OGG 파일 선택·설정·한 곡 완주와 결과 전환, 390×844 / 480×900 / 1440×900 화면 배치. 실제 휴대폰의 Safari/Chrome에서는 아직 검증하지 않았습니다.
 

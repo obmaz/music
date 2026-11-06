@@ -90,6 +90,24 @@ func run() -> void:
 	check(not game.sng_parts[0].charts["3"][0].has("state"), "source SNG chart is not mutated")
 	game.use_demo()
 	check(not game.sng_song and game.difficulty <= 2, "demo restores original difficulties and audio")
+	game.start()
+	game.handle_back()
+	check(game.screen == "paused", "Back pauses the game")
+	game.handle_back()
+	check(game.screen == "paused", "Repeated Back keeps pause popup open")
+	game.screen = "settings"
+	game.handle_back()
+	check(game.screen == "menu", "Settings Back stays in the app")
+	game.handle_back()
+	check(game.screen == "back_prompt", "Menu Back opens an in-app popup")
+	game.handle_back()
+	check(game.screen == "back_prompt", "Repeated menu Back does not leave or dismiss popup")
+	game.screen = "playing"
+	var escape := InputEventKey.new()
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	game._input(escape)
+	check(game.screen == "paused", "Escape uses the same Back behavior")
 	game.queue_free()
 	print("Game checks complete: ", failures, " failure(s)")
 	quit(1 if failures else 0)

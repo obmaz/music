@@ -1,7 +1,7 @@
 # Original assets
 
 The original `assets/night-circuit.ogg` audio, `tools/generate_audio.py` composition,
-`assets/icon.svg`, vector artwork in `scripts/game.gd`, and generated practice
+`assets/icon.svg`, its rendered PNG app icons in `web/icons/`, vector artwork in `scripts/game.gd`, and generated practice
 patterns in `scripts/chart.gd` are dedicated to the public domain under
 [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
 To the extent possible under law, the contributors waive all copyright and
