@@ -14,6 +14,7 @@ const LABELS = ["D", "F", "SPACE", "J", "K"]
 const HIT_Y = 724.0
 const TOP_Y = 224.0
 const LANE_W = 86.4
+const NOTE_HEIGHT = 28.0
 
 var screen := "menu"
 var difficulty := 1
@@ -566,8 +567,8 @@ func draw_game() -> void:
 				draw_line(Vector2(x + LANE_W / 2 - 7, top), Vector2(x + LANE_W / 2 - 7, bottom), color, 2)
 		if note.state == 1: y = HIT_Y
 		if y >= TOP_Y and y <= HIT_Y + 30:
-			box(Rect2(x, y - 7, LANE_W - 14, 14), color, 4)
-			draw_rect(Rect2(x + 5, y - 5, LANE_W - 24, 2), Color(1, 1, 1, 0.55))
+			box(Rect2(x, y - NOTE_HEIGHT / 2.0, LANE_W - 14, NOTE_HEIGHT), color, 6)
+			draw_rect(Rect2(x + 5, y - NOTE_HEIGHT / 2.0 + 3, LANE_W - 24, 3), Color(1, 1, 1, 0.55))
 	draw_line(Vector2(24, HIT_Y), Vector2(456, HIT_Y), LIME, 2)
 	for lane in range(5):
 		var rect := Rect2(24 + lane * LANE_W, 770, LANE_W - 3, 80)

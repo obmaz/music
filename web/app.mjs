@@ -12,11 +12,12 @@ let currentScreen = 'menu';
 
 export function placeOverlay(element, x, y, width, height) {
   const bounds = canvas.getBoundingClientRect();
-  const scale = Math.min(bounds.width / 480, bounds.height / 900);
+  const scaleX = bounds.width / 480;
+  const scaleY = bounds.height / 900;
   Object.assign(element.style, {
-    left: (bounds.x + (bounds.width - 480 * scale) / 2 + x * scale) + 'px',
-    top: (bounds.y + (bounds.height - 900 * scale) / 2 + y * scale) + 'px',
-    width: (width * scale) + 'px', height: (height * scale) + 'px',
+    left: (bounds.x + x * scaleX) + 'px',
+    top: (bounds.y + y * scaleY) + 'px',
+    width: (width * scaleX) + 'px', height: (height * scaleY) + 'px',
   });
 }
 const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;

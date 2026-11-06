@@ -18,8 +18,8 @@ const os=require('node:os');
  await page.route(root+'/previous.html',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Previous site</title>Previous site'}));
  const waitScreen=screen=>page.waitForFunction(s=>document.getElementById('canvas').dataset.screen===s,screen);
  const gameClick=async(x,y)=>{
-  const b=await page.locator('canvas').boundingBox(),s=Math.min(b.width/480,b.height/900);
-  await page.mouse.click(b.x+(b.width-480*s)/2+x*s,b.y+(b.height-900*s)/2+y*s);
+  const b=await page.locator('canvas').boundingBox();
+  await page.mouse.click(b.x+x*b.width/480,b.y+y*b.height/900);
  };
  const back=async()=>{await page.evaluate(()=>history.back());await page.waitForTimeout(150);assert.equal(page.url(),base)};
  try{
