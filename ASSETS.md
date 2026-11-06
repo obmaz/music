@@ -12,7 +12,7 @@ no downloaded recordings, samples, lyrics, or transcription of Enter Sandman.
 Regenerate with `python3 tools/generate_audio.py` (NumPy and FFmpeg required).
 
 Fonts retain their own license: see `assets/FONT-LICENSE.txt`.
-Godot retains its own license and third-party notices in `docs/`.
+Godot retains its own license and third-party notices in `licenses/` (copied into the web build).
 Metallica recordings, compositions, logos and album art are not distributed.
 
 ## SNG test fixtures

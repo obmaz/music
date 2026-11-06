@@ -2,4 +2,4 @@
 build/
 test-results/
 *.tmp
-docs/*.import
+screenshots/*.import

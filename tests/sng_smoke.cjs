@@ -1,4 +1,4 @@
-// Serve docs on port 8765, then: node tests/sng_smoke.cjs
+// Serve build/web on port 8765, then: node tests/sng_smoke.cjs
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const path=require('node:path');

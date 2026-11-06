@@ -1,4 +1,4 @@
-// Run with docs served at http://127.0.0.1:8765.
+// Run with build/web served at http://127.0.0.1:8765.
 // npm install playwright; CHROMIUM=/usr/bin/chromium node tests/web_smoke.cjs
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');

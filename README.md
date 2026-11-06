@@ -2,7 +2,7 @@
 
 Godot **4.7.2**로 만든 모바일 5버튼 리듬 게임 프로토타입입니다.
 
-[화면 미리보기](docs/preview.png)
+[화면 미리보기](screenshots/preview.png)
 
 - 5개 레인 멀티터치, PC `D / F / Space / J / K`
 - 탭·롱노트, 판정·콤보·정확도·최고 점수
@@ -50,30 +50,38 @@ Godot **4.7.2**로 만든 모바일 5버튼 리듬 게임 프로토타입입니�
 
 1. Godot **4.7.2 stable**에서 `project.godot`을 엽니다.
 2. F6/F5로 실행합니다. SNG·로컬 음원 선택 기능은 웹 빌드에서 제공합니다. 네이티브 에디터 실행은 데모만 지원합니다.
-3. 같은 버전의 Web export templates를 설치합니다.
+3. 같은 버전의 Web export templates를 설치합니다. Linux x86_64에서는 `bash tools/install-godot.sh`로 공식 에디터와 Web 템플릿을 함께 설치할 수 있습니다 (SHA-512 검증).
 4. Node.js 20 이상을 준비하고 `GODOT=/path/to/Godot_v4.7.2-stable_linux.x86_64 bash tools/build.sh`
-5. `python3 -m http.server 8000 --directory docs` 후 `http://localhost:8000`에서 실행합니다. `file://`로 열지 마세요.
+5. `python3 -m http.server 8000 --directory build/web` 후 `http://localhost:8000`에서 실행합니다. `file://`로 열지 마세요.
 
-`docs/`에는 실제 Godot 4.7.2 싱글 스레드 WebAssembly 릴리스 빌드가 들어 있습니다. SharedArrayBuffer / COOP / COEP 헤더가 필요하지 않아 GitHub Pages에 그대로 배포할 수 있습니다. 최초 엔진 다운로드 크기는 약 40MB입니다.
+`tools/build.sh`는 Godot 4.7.2 싱글 스레드 WebAssembly 릴리스 빌드를 `build/web/`에 생성합니다. 외부 JS 모듈과 라이선스 파일도 함께 복사합니다. 빌드 결과물은 Git에 커밋하지 않습니다. SharedArrayBuffer / COOP / COEP 헤더가 필요하지 않아 GitHub Pages에 그대로 배포할 수 있습니다. 최초 엔진 다운로드 크기는 약 40MB입니다.
 
-## GitHub Pages 배포
+## GitHub Actions로 빌드·배포
 
-저장소 **Settings → Pages**에서 아래와 같이 한 번 설정합니다.
+[배포 워크플로](.github/workflows/pages.yml)는 `main`에 push하거나 Actions에서 수동 실행하면 동작합니다.
 
-- Source: **Deploy from a branch**
-- Branch: **main**, folder: **/docs**
-- **Save**
+1. Ubuntu 24.04 / Node 22에서 공식 **Godot 4.7.2 stable** 에디터와 같은 버전의 Web 템플릿을 준비합니다. 다운로드는 공식 SHA-512 목록으로 검증하며, 이후 실행에는 캐시를 사용합니다.
+2. Godot 게임 테스트와 Node SNG 파서 테스트를 실행합니다.
+3. `tools/build.sh`로 `build/web/`을 만듭니다.
+4. `actions/upload-pages-artifact`로 웹 빌드를 업로드합니다.
+5. 별도 배포 job이 `actions/configure-pages` / `actions/deploy-pages`로 Pages에 배포합니다.
 
-배포 후 주소: **https://obmaz.github.io/music/**
+PR에서는 테스트와 빌드만 실행합니다. Pages 배포 권한(`pages: write`, `id-token: write`)은 배포 job에만 부여하고, 별도 토큰/시크릿을 요구하지 않습니다. 사용하는 GitHub 공식 액션은 커밋 SHA로 고정했습니다.
 
-현재 연결된 GitHub 앱은 Pages 설정 API에 403을 반환하므로, 앱으로 최초 활성화할 수 없습니다. 한 번 설정하면 이후 `docs/` 변경이 push될 때 GitHub가 자동 배포합니다. 실제 배포 완료 여부는 저장소의 Pages / Actions에서 확인할 수 있습니다.
+**최초 설정:** [Settings → Pages](https://github.com/obmaz/music/settings/pages) → **Build and deployment → Source → GitHub Actions**를 선택합니다. 브랜치나 `/docs` 폴더는 선택하지 않습니다. 현재 연결된 GitHub 앱에는 Pages 최초 활성화 권한이 없으므로 이 설정은 저장소 관리자가 한 번 해야 합니다.
+
+이후 [Actions](https://github.com/obmaz/music/actions)에서 **Build and deploy Godot to Pages → Run workflow → main**을 실행하거나, `main`에 변경 사항을 push하면 자동 배포됩니다. 최초 설정 전에 실행되어 배포가 실패했다면 설정 후 다시 실행하세요.
+
+배포 주소: **https://obmaz.github.io/music/**
+
+로컬에서도 `GODOT=/path/to/godot bash tools/build.sh`로 같은 테스트·빌드를 재현할 수 있습니다. 출력 위치는 첫 번째 인자로 지정할 수 있습니다 (`bash tools/build.sh build/preview`).
 
 ## 테스트
 
 ```sh
 node --test tests/sng.test.mjs
 godot --headless --path . --script tests/game_test.gd
-# docs를 8765 포트에서 제공한 상태, Node + Playwright + Chromium 필요
+# build/web을 8765 포트에서 제공한 상태, Node + Playwright + Chromium 필요
 node tests/sng_smoke.cjs
 node tests/web_smoke.cjs
 ```
@@ -91,4 +99,4 @@ SNG 테스트는 공식 SngCli v0.3.0으로 생성한 두 개의 오리지널 �
 - 프로젝트 코드: MIT (`LICENSE`)
 - `NIGHT CIRCUIT`, 생성 채보, 오리지널 벡터 아트: CC0 1.0 (`ASSETS.md`)
 - DejaVu Sans 폰트: `assets/FONT-LICENSE.txt`
-- 배포된 Godot 런타임: `docs/GODOT-LICENSE.txt`, `docs/GODOT-THIRD-PARTY.txt`
+- 배포된 Godot 런타임: `licenses/GODOT-LICENSE.txt`, `licenses/GODOT-THIRD-PARTY.txt` (웹 빌드에 함께 복사)
